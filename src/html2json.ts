@@ -82,15 +82,30 @@ export default class HTMLConverter {
    * Find and convert a block to its basic JSON data
    * @param {String} searchTerm the block name or variation
    * @param {Boolean} searchRef if the variation should be used for search
-   * @returns {Object} the JSON Object representing pug
+   * @returns {Object|Array} the JSON Object or Array representing the block
    */
-  findAndConvert(searchTerm: string, searchRef: boolean = false): BlockProperties {
-    return this.blocks.reduce((acc, block) => {
+  findAndConvert(searchTerm: string, searchRef: boolean = false): BlockProperties | unknown[] {
+    const term = searchTerm.toLowerCase();
+    return this.blocks.reduce<BlockProperties | unknown[]>((acc, block) => {
+      const className = block.properties?.className as string[] | undefined;
       // If we are looking for a reference,
       // use the variation, not the block name
       const idx = searchRef ? 1 : 0;
-      if ((block.properties?.className as string[] | undefined)?.[idx] === searchTerm) {
-        return this.getProperties(block);
+      const blockClass = className?.[idx]?.toLowerCase();
+      const matches = blockClass === term;
+      // Root block has a single class (e.g. "foo"); nested item blocks add a
+      // second class for refs (e.g. "foo foo-abcd"). Both match on className[0],
+      // so we require no second class to pick the root.
+      const isRootBlock = !searchRef && !className?.[1];
+      if (matches && (searchRef || isRootBlock)) {
+        const properties = this.getProperties(block);
+        // If the block contains only @items, it represents an array
+        // Return the array value directly instead of the object wrapper
+        const keys = Object.keys(properties);
+        if (keys.length === 1 && keys[0] === '@items') {
+          return properties['@items'] as unknown[];
+        }
+        return properties;
       }
       return acc;
     }, {});
@@ -99,7 +114,7 @@ export default class HTMLConverter {
   // We will always try to convert to a strong type.
   // The schema is responsible for knowing if it
   // is correct and converting back if necessary.
-  getTypedValue(value: string): string | boolean | number | BlockProperties | null {
+  getTypedValue(value: string): string | boolean | number | BlockProperties | unknown[] | null {
     // It it doesn't exist, resolve to empty
     if (!value) return '';
 
@@ -128,7 +143,7 @@ export default class HTMLConverter {
     });
   }
 
-  getReference(text: string): BlockProperties | null {
+  getReference(text: string): BlockProperties | unknown[] | null {
     if (text.startsWith(SELF_REF)) {
       const refId = text.split(SELF_REF)[1].replaceAll('/', '-');
       const reference = this.findAndConvert(refId, true);
