@@ -20,6 +20,18 @@ function parseHtml(html: string) {
     .parse(html);
 }
 
+const PASSTHROUGH_HEADERS = ['Date', 'Last-Modified', 'Cache-Control'];
+const ORIGIN_REQUEST_HEADERS = ['If-Modified-Since'];
+
+function pickHeaders(source: Headers, names: string[]): Record<string, string> {
+  return Object.fromEntries(
+    names.flatMap((name) => {
+      const value = source.get(name);
+      return value ? [[name, value]] : [];
+    }),
+  );
+}
+
 export default {
   async fetch(request: Request): Promise<Response> {
     try {
@@ -49,7 +61,20 @@ export default {
 
       const ctx = getCtx(request.url);
       const edsContentUrl = `${ctx.edsDomainUrl}/${ctx.contentPath}`;
-      const edsResp = await fetch(edsContentUrl, { cf: { scrapeShield: false } });
+      const edsResp = await fetch(edsContentUrl, {
+        headers: pickHeaders(request.headers, ORIGIN_REQUEST_HEADERS),
+        cf: { scrapeShield: false },
+      });
+
+      const passthroughHeaders = pickHeaders(edsResp.headers, PASSTHROUGH_HEADERS);
+
+      if (edsResp.status === 304) {
+        return new Response(null, {
+          status: 304,
+          headers: { ...corsHeaders, ...passthroughHeaders },
+        });
+      }
+
       if (!edsResp.ok) {
         return new Response(`Failed to fetch EDS page: ${edsContentUrl}`, { status: edsResp.status, headers: corsHeaders });
       }
@@ -61,6 +86,7 @@ export default {
       return new Response(JSON.stringify(json, null, 2), {
         headers: {
           ...corsHeaders,
+          ...passthroughHeaders,
           'Content-Type': 'application/json',
         },
       });
