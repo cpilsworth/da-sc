@@ -14,14 +14,14 @@ import rehypeParse from 'rehype-parse';
 import { getCtx } from './context.js';
 import HTMLConverter from './html2json.js';
 
+const PASSTHROUGH_HEADERS = ['Date', 'Last-Modified', 'Cache-Control'];
+const ORIGIN_REQUEST_HEADERS = ['If-Modified-Since'];
+
 function parseHtml(html: string) {
   return unified()
     .use(rehypeParse, { fragment: false })
     .parse(html);
 }
-
-const PASSTHROUGH_HEADERS = ['Date', 'Last-Modified', 'Cache-Control'];
-const ORIGIN_REQUEST_HEADERS = ['If-Modified-Since'];
 
 function pickHeaders(source: Headers, names: string[]): Record<string, string> {
   return Object.fromEntries(
